@@ -11,6 +11,18 @@ user = "your_name"
 serverAddr = "0.0.0.0"
 serverPort = 7000
 
+# Resolve the address to dial from a dynamic source instead of using serverAddr/serverPort
+# directly. This is useful when the frps endpoint is published dynamically, for example when
+# it sits behind a NAT with a rotating port and its address is written into a DNS TXT record.
+# Supported source types are "txt", "file" and "exec". The resolved value may be
+# "host", "host:port" or "[ipv6]:port"; a value without a port keeps serverPort, a value
+# without a host keeps serverAddr. serverAddr is still used as the logical server name
+# (TLS SNI and certificate verification), so keep it the domain that matches the certificate.
+# The record is looked up again every 30 seconds, and a failed lookup falls back to the last
+# known address, or to serverAddr/serverPort.
+# serverAddrSource = { type = "txt", txt = { record = "_frp.example.com" } }
+# serverAddrSource = { type = "file", file = { path = "/run/frps-addr" } }
+
 # STUN server to help penetrate NAT hole.
 # natHoleStunServer = "stun.easyvoip.com:3478"
 

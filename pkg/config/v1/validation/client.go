@@ -40,6 +40,7 @@ func (v *ConfigValidator) ValidateClientCommonConfig(c *v1.ClientCommonConfig) (
 		func() (Warning, error) { return nil, validateWebServerConfig(&c.WebServer) },
 		func() (Warning, error) { return nil, validateMetricsServerConfig(&c.MetricsServer, &c.WebServer) },
 		func() (Warning, error) { return validateTransportConfig(&c.Transport) },
+		func() (Warning, error) { return nil, validateServerAddrSource(c) },
 		func() (Warning, error) { return validateIncludeFiles(c.IncludeConfigFiles) },
 	}
 
@@ -222,4 +223,16 @@ func ValidateAllClientConfig(
 		}
 	}
 	return warnings, nil
+}
+
+// validateServerAddrSource validates the dynamic source used to resolve the frps
+// address.
+func validateServerAddrSource(c *v1.ClientCommonConfig) error {
+	if c.ServerAddrSource == nil {
+		return nil
+	}
+	if err := c.ServerAddrSource.Validate(); err != nil {
+		return fmt.Errorf("serverAddrSource: %v", err)
+	}
+	return nil
 }

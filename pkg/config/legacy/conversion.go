@@ -41,6 +41,12 @@ func Convert_ClientCommonConf_To_v1(conf *ClientCommonConf) *v1.ClientCommonConf
 
 	out.ServerAddr = conf.ServerAddr
 	out.ServerPort = conf.ServerPort
+	if conf.ServerAddrTXT != "" {
+		out.ServerAddrSource = &v1.ValueSource{
+			Type: "txt",
+			TXT:  &v1.TXTSource{Record: conf.ServerAddrTXT},
+		}
+	}
 	out.NatHoleSTUNServer = conf.NatHoleSTUNServer
 	out.Transport.DialServerTimeout = conf.DialServerTimeout
 	out.Transport.DialServerKeepAlive = conf.DialServerKeepAlive

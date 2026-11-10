@@ -27,7 +27,7 @@ const (
 	tokenSourceConflictErr = "cannot specify both auth.token and auth.tokenSource"
 	tokenSourceExecErr     = "unsafe feature \"TokenSourceExec\" is not enabled. To enable it, ensure it is allowed in the configuration or command line flags"
 	invalidFileSourceErr   = "invalid auth.tokenSource: file configuration is required when type is 'file'"
-	unsupportedSourceErr   = "invalid auth.tokenSource: unsupported value source type: env (only 'file' and 'exec' are supported)"
+	unsupportedSourceErr   = "invalid auth.tokenSource: unsupported value source type: env (only 'file', 'exec' and 'txt' are supported)"
 )
 
 func TestValidateAuthTokenSource(t *testing.T) {

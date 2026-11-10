@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,6 +30,16 @@ type ValueSource struct {
 	Type string      `json:"type"`
 	File *FileSource `json:"file,omitempty"`
 	Exec *ExecSource `json:"exec,omitempty"`
+	TXT  *TXTSource  `json:"txt,omitempty"`
+}
+
+// TXTSource specifies how to read a value from a DNS TXT record. The lookup uses
+// the system resolver, or the DNS server configured with dnsServer.
+// The multiple character-strings of one TXT record are concatenated by the
+// resolver; if the name carries several TXT records, the first non-empty one is
+// used.
+type TXTSource struct {
+	Record string `json:"record"`
 }
 
 // FileSource specifies how to load a value from a file.
@@ -65,8 +76,13 @@ func (v *ValueSource) Validate() error {
 			return errors.New("exec configuration is required when type is 'exec'")
 		}
 		return v.Exec.Validate()
+	case "txt":
+		if v.TXT == nil {
+			return errors.New("txt configuration is required when type is 'txt'")
+		}
+		return v.TXT.Validate()
 	default:
-		return fmt.Errorf("unsupported value source type: %s (only 'file' and 'exec' are supported)", v.Type)
+		return fmt.Errorf("unsupported value source type: %s (only 'file', 'exec' and 'txt' are supported)", v.Type)
 	}
 }
 
@@ -81,6 +97,8 @@ func (v *ValueSource) Resolve(ctx context.Context) (string, error) {
 		return v.File.Resolve(ctx)
 	case "exec":
 		return v.Exec.Resolve(ctx)
+	case "txt":
+		return v.TXT.Resolve(ctx)
 	default:
 		return "", fmt.Errorf("unsupported value source type: %s", v.Type)
 	}
@@ -155,4 +173,47 @@ func (e *ExecSource) Resolve(ctx context.Context) (string, error) {
 
 	// Trim whitespace, which is important for exec-based tokens
 	return strings.TrimSpace(string(content)), nil
+}
+
+// Validate validates the TXTSource configuration.
+func (t *TXTSource) Validate() error {
+	if t == nil {
+		return errors.New("txtSource cannot be nil")
+	}
+
+	record := NormalizeTXTRecord(t.Record)
+	if record == "" {
+		return errors.New("txt record cannot be empty")
+	}
+	if strings.ContainsAny(record, " \t\r\n") {
+		return fmt.Errorf("invalid txt record: %q", t.Record)
+	}
+	return nil
+}
+
+// Resolve looks up the configured TXT record and returns its first non-empty
+// value.
+func (t *TXTSource) Resolve(ctx context.Context) (string, error) {
+	if err := t.Validate(); err != nil {
+		return "", err
+	}
+
+	record := NormalizeTXTRecord(t.Record)
+	values, err := net.DefaultResolver.LookupTXT(ctx, record)
+	if err != nil {
+		return "", fmt.Errorf("failed to look up TXT record %s: %v", record, err)
+	}
+
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed, nil
+		}
+	}
+	return "", fmt.Errorf("TXT record %s is empty", record)
+}
+
+// NormalizeTXTRecord trims spaces and the trailing root dot of a TXT record
+// name, so that both "_frp.example.com" and "_frp.example.com." work.
+func NormalizeTXTRecord(record string) string {
+	return strings.TrimSuffix(strings.TrimSpace(record), ".")
 }

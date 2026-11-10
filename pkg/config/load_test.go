@@ -710,3 +710,59 @@ remotePort = 6000
 	require.Equal(7000, clientCfg.ServerPort)
 	require.Len(clientCfg.Proxies, 1)
 }
+
+func TestLoadClientConfigServerAddrSource(t *testing.T) {
+	require := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frpc.toml")
+	content := `
+serverAddr = "frp.example.com"
+serverPort = 7000
+serverAddrSource = { type = "txt", txt = { record = "_frp.example.com" } }
+`
+	require.NoError(os.WriteFile(path, []byte(content), 0o600))
+
+	common, _, _, _, err := LoadClientConfig(path, true)
+	require.NoError(err)
+	require.NotNil(common.ServerAddrSource)
+	require.Equal("txt", common.ServerAddrSource.Type)
+	require.NotNil(common.ServerAddrSource.TXT)
+	require.Equal("_frp.example.com", common.ServerAddrSource.TXT.Record)
+	// serverAddr keeps being the logical server name (TLS SNI, vhost).
+	require.Equal("frp.example.com", common.ServerAddr)
+	require.Equal(7000, common.ServerPort)
+}
+
+func TestLoadClientConfigServerAddrSourceWithoutServerAddr(t *testing.T) {
+	require := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frpc.toml")
+	content := `
+serverAddrSource = { type = "txt", txt = { record = "_frp.example.com" } }
+`
+	require.NoError(os.WriteFile(path, []byte(content), 0o600))
+
+	common, _, _, _, err := LoadClientConfig(path, true)
+	require.NoError(err)
+	// No serverAddr is defaulted to 0.0.0.0 when the address is resolved
+	// dynamically, the resolved host is then used as the server name.
+	require.Empty(common.ServerAddr)
+	require.Equal(7000, common.ServerPort)
+}
+
+func TestLoadClientConfigServerAddrSourceRejectsUnknownType(t *testing.T) {
+	require := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frpc.toml")
+	content := `
+serverAddr = "frp.example.com"
+serverAddrSource = { type = "dns-query" }
+`
+	require.NoError(os.WriteFile(path, []byte(content), 0o600))
+
+	_, _, _, _, err := LoadClientConfig(path, true)
+	require.Error(err)
+}

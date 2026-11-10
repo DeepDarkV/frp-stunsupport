@@ -15,6 +15,7 @@
 package v1
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/samber/lo"
@@ -46,6 +47,20 @@ type ClientCommonConfig struct {
 	// ServerPort specifies the port to connect to the server on. By default,
 	// this value is 7000.
 	ServerPort int `json:"serverPort,omitempty"`
+	// ServerAddrSource, when it is set, resolves the address frpc dials from a
+	// dynamic source instead of using serverAddr/serverPort directly. This is
+	// useful when the frps endpoint is published dynamically, for example when it
+	// sits behind a NAT with a rotating port and its address is written into a
+	// DNS TXT record.
+	//
+	// The resolved value may be "host", "host:port" or "[ipv6]:port". A value
+	// without a port keeps serverPort, a value without a host keeps serverAddr.
+	// serverAddr is still used as the logical server name (TLS SNI, HTTP vhost,
+	// TLS certificate verification), so it should stay the domain name matching
+	// the server certificate even when the record resolves to a raw IP.
+	//
+	// Since v0.73.0
+	ServerAddrSource *ValueSource `json:"serverAddrSource,omitempty"`
 	// STUN server to help penetrate NAT hole.
 	NatHoleSTUNServer string `json:"natHoleStunServer,omitempty"`
 	// DNSServer specifies a DNS server address for FRPC to use. If this value
@@ -84,7 +99,15 @@ type ClientCommonConfig struct {
 }
 
 func (c *ClientCommonConfig) Complete() error {
-	c.ServerAddr = util.EmptyOr(c.ServerAddr, "0.0.0.0")
+	// When the address comes from a dynamic source, an empty serverAddr means
+	// "use the resolved host as the server name" instead of the 0.0.0.0 default.
+	if c.ServerAddrSource == nil {
+		c.ServerAddr = util.EmptyOr(c.ServerAddr, "0.0.0.0")
+	} else if err := c.ServerAddrSource.Validate(); err != nil {
+		// Fail fast: a broken source would otherwise only show up as a warning at
+		// the first dial attempt.
+		return fmt.Errorf("serverAddrSource: %v", err)
+	}
 	c.ServerPort = util.EmptyOr(c.ServerPort, 7000)
 	c.LoginFailExit = util.EmptyOr(c.LoginFailExit, new(true))
 	c.NatHoleSTUNServer = util.EmptyOr(c.NatHoleSTUNServer, "stun.easyvoip.com:3478")

@@ -244,3 +244,45 @@ func TestValueSource_Resolve(t *testing.T) {
 		})
 	}
 }
+
+func TestTXTSource_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		record  string
+		wantErr bool
+	}{
+		{name: "plain record", record: "_frp.example.com"},
+		{name: "record with root dot", record: "_frp.example.com."},
+		{name: "record with spaces", record: "  _frp.example.com  "},
+		{name: "empty record", record: "", wantErr: true},
+		{name: "blank record", record: "   ", wantErr: true},
+		{name: "record with whitespace inside", record: "_frp example.com", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			source := &TXTSource{Record: tc.record}
+			err := source.Validate()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for %q", tc.record)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tc.record, err)
+			}
+		})
+	}
+
+	if err := (&TXTSource{}).Validate(); err == nil {
+		t.Fatal("expected an error for an empty record")
+	}
+	// The generic value source has to accept the new type.
+	if err := (&ValueSource{Type: "txt", TXT: &TXTSource{Record: "_frp.example.com"}}).Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := (&ValueSource{Type: "txt"}).Validate(); err == nil {
+		t.Fatal("expected an error when txt configuration is missing")
+	}
+}

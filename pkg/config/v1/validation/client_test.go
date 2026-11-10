@@ -138,3 +138,36 @@ func TestValidateClientFeatureGatesAreConfigScoped(t *testing.T) {
 	require.ErrorContains(t, err, "VirtualNet feature is not enabled")
 	require.Equal(t, defaultGatesBefore, featuregate.DefaultFeatureGates.String())
 }
+
+func TestValidateClientCommonConfig_ServerAddrSource(t *testing.T) {
+	newConfig := func(t *testing.T) *v1.ClientCommonConfig {
+		t.Helper()
+		cfg := &v1.ClientCommonConfig{
+			ServerAddr: "frp.example.com",
+			ServerPort: 7000,
+		}
+		if err := cfg.Complete(); err != nil {
+			t.Fatalf("complete config: %v", err)
+		}
+		return cfg
+	}
+
+	cfg := newConfig(t)
+	cfg.ServerAddrSource = &v1.ValueSource{Type: "txt", TXT: &v1.TXTSource{Record: "_frp.example.com"}}
+	_, err := NewConfigValidator(security.NewUnsafeFeatures(nil)).ValidateClientCommonConfig(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cfg = newConfig(t)
+	cfg.ServerAddrSource = &v1.ValueSource{Type: "txt"}
+	if _, err = NewConfigValidator(security.NewUnsafeFeatures(nil)).ValidateClientCommonConfig(cfg); err == nil {
+		t.Fatal("expected an error for a txt source without a record")
+	}
+
+	cfg = newConfig(t)
+	cfg.ServerAddrSource = &v1.ValueSource{Type: "nope"}
+	if _, err = NewConfigValidator(security.NewUnsafeFeatures(nil)).ValidateClientCommonConfig(cfg); err == nil {
+		t.Fatal("expected an error for an unsupported source type")
+	}
+}

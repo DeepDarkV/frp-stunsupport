@@ -40,6 +40,9 @@ type ClientCommonConf struct {
 	// ServerPort specifies the port to connect to the server on. By default,
 	// this value is 7000.
 	ServerPort int `ini:"server_port" json:"server_port"`
+	// ServerAddrTXT specifies a DNS TXT record that holds the address (and
+	// optionally the port) to dial instead of ServerAddr/ServerPort.
+	ServerAddrTXT string `ini:"server_addr_txt" json:"server_addr_txt"`
 	// STUN server to help penetrate NAT hole.
 	NatHoleSTUNServer string `ini:"nat_hole_stun_server" json:"nat_hole_stun_server"`
 	// The maximum amount of time a dial to server will wait for a connect to complete.

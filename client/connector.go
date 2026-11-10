@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +79,8 @@ func (c *messageConnector) Close() error {
 type defaultConnectorImpl struct {
 	ctx context.Context
 	cfg *v1.ClientCommonConfig
+	// addr resolves the address to dial when serverAddrSource is configured.
+	addr *serverAddrResolver
 
 	muxSession *fmux.Session
 	quicConn   *quic.Conn
@@ -88,9 +89,28 @@ type defaultConnectorImpl struct {
 
 func NewConnector(ctx context.Context, cfg *v1.ClientCommonConfig) Connector {
 	return &defaultConnectorImpl{
-		ctx: ctx,
-		cfg: cfg,
+		ctx:  ctx,
+		cfg:  cfg,
+		addr: newServerAddrResolver(cfg),
 	}
+}
+
+// dialTarget returns the address to dial for the frps control connection.
+func (c *defaultConnectorImpl) dialTarget(ctx context.Context) dialTarget {
+	if c.addr == nil {
+		return dialTarget{host: c.cfg.ServerAddr, port: c.cfg.ServerPort}
+	}
+	return c.addr.target(ctx)
+}
+
+// serverName returns the name used for TLS SNI and certificate verification.
+// serverAddr is preferred, so a dynamic source that resolves to a raw IP keeps
+// using the configured domain name.
+func (c *defaultConnectorImpl) serverName(target dialTarget) string {
+	if c.cfg.ServerAddr != "" && c.cfg.ServerAddr != "0.0.0.0" {
+		return c.cfg.ServerAddr
+	}
+	return target.host
 }
 
 // Open opens an underlying connection to the server.
@@ -104,9 +124,10 @@ func (c *defaultConnectorImpl) Open() error {
 	if strings.EqualFold(c.cfg.Transport.Protocol, "quic") {
 		var tlsConfig *tls.Config
 		var err error
+		target := c.dialTarget(c.ctx)
 		sn := c.cfg.Transport.TLS.ServerName
 		if sn == "" {
-			sn = c.cfg.ServerAddr
+			sn = c.serverName(target)
 		}
 		if lo.FromPtr(c.cfg.Transport.TLS.Enable) {
 			tlsConfig, err = transport.NewClientTLSConfigWithSystemCA(
@@ -126,7 +147,7 @@ func (c *defaultConnectorImpl) Open() error {
 
 		conn, err := quic.DialAddr(
 			c.ctx,
-			net.JoinHostPort(c.cfg.ServerAddr, strconv.Itoa(c.cfg.ServerPort)),
+			target.address(),
 			tlsConfig, &quic.Config{
 				MaxIdleTimeout:     time.Duration(c.cfg.Transport.QUIC.MaxIdleTimeout) * time.Second,
 				MaxIncomingStreams: int64(c.cfg.Transport.QUIC.MaxIncomingStreams),
@@ -183,6 +204,7 @@ func (c *defaultConnectorImpl) Connect() (net.Conn, error) {
 
 func (c *defaultConnectorImpl) realConnect() (net.Conn, error) {
 	xl := xlog.FromContextSafe(c.ctx)
+	target := c.dialTarget(c.ctx)
 	var tlsConfig *tls.Config
 	var err error
 	tlsEnable := lo.FromPtr(c.cfg.Transport.TLS.Enable)
@@ -192,7 +214,7 @@ func (c *defaultConnectorImpl) realConnect() (net.Conn, error) {
 	if tlsEnable {
 		sn := c.cfg.Transport.TLS.ServerName
 		if sn == "" {
-			sn = c.cfg.ServerAddr
+			sn = c.serverName(target)
 		}
 
 		tlsConfig, err = transport.NewClientTLSConfigWithSystemCA(
@@ -246,7 +268,7 @@ func (c *defaultConnectorImpl) realConnect() (net.Conn, error) {
 	)
 	conn, err := libnet.DialContext(
 		c.ctx,
-		net.JoinHostPort(c.cfg.ServerAddr, strconv.Itoa(c.cfg.ServerPort)),
+		target.address(),
 		dialOptions...,
 	)
 	return conn, err
