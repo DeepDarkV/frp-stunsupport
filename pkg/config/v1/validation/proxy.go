@@ -40,7 +40,11 @@ func validateProxyBaseConfigForClient(c *v1.ProxyBaseConfig) error {
 	}
 
 	if c.Plugin.Type == "" {
-		if err := ValidatePort(c.LocalPort, "localPort"); err != nil {
+		if c.LocalAddrSource != nil {
+			if err := c.LocalAddrSource.Validate(); err != nil {
+				return fmt.Errorf("localAddrSource: %v", err)
+			}
+		} else if err := ValidatePort(c.LocalPort, "localPort"); err != nil {
 			return fmt.Errorf("localPort: %v", err)
 		}
 	}
@@ -128,10 +132,20 @@ func ValidateProxyConfigurerForClient(c v1.ProxyConfigurer) error {
 }
 
 func validateTCPProxyConfigForClient(c *v1.TCPProxyConfig) error {
-	return nil
+	return validateRemotePortSource(c.RemotePortSource)
 }
 
 func validateUDPProxyConfigForClient(c *v1.UDPProxyConfig) error {
+	return validateRemotePortSource(c.RemotePortSource)
+}
+
+func validateRemotePortSource(source *v1.ValueSource) error {
+	if source == nil {
+		return nil
+	}
+	if err := source.Validate(); err != nil {
+		return fmt.Errorf("remotePortSource: %v", err)
+	}
 	return nil
 }
 

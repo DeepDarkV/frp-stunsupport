@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
+	"github.com/fatedier/frp/pkg/config/v1/validation"
 )
 
 const tomlServerContent = `
@@ -765,4 +766,59 @@ serverAddrSource = { type = "dns-query" }
 
 	_, _, _, _, err := LoadClientConfig(path, true)
 	require.Error(err)
+}
+
+func TestLoadClientConfigProxyAddrSources(t *testing.T) {
+	require := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frpc.toml")
+	content := `
+serverAddr = "frps.example.com"
+
+[[proxies]]
+name = "open"
+type = "tcp"
+remotePort = 7000
+localAddrSource = { type = "txt", txt = { record = "open.example.com" } }
+remotePortSource = { type = "txt", txt = { record = "open.example.com" } }
+`
+	require.NoError(os.WriteFile(path, []byte(content), 0o600))
+
+	common, proxies, _, _, err := LoadClientConfig(path, true)
+	require.NoError(err)
+	require.NotNil(common)
+	require.Len(proxies, 1)
+
+	tcpCfg, ok := proxies[0].(*v1.TCPProxyConfig)
+	require.True(ok)
+	require.NotNil(tcpCfg.LocalAddrSource)
+	require.Equal("open.example.com", tcpCfg.LocalAddrSource.TXT.Record)
+	require.NotNil(tcpCfg.RemotePortSource)
+	require.Equal(7000, tcpCfg.RemotePort)
+	// localPort is not required when the backend comes from a source.
+	require.NoError(validation.ValidateProxyConfigurerForClient(tcpCfg))
+}
+
+func TestLoadClientConfigProxyAddrSourcesRejectsBadSource(t *testing.T) {
+	require := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frpc.toml")
+	content := `
+serverAddr = "frps.example.com"
+
+[[proxies]]
+name = "open"
+type = "tcp"
+remotePort = 7000
+localAddrSource = { type = "txt" }
+`
+	require.NoError(os.WriteFile(path, []byte(content), 0o600))
+
+	_, proxies, _, _, err := LoadClientConfig(path, true)
+	require.NoError(err)
+	require.Len(proxies, 1)
+	// A txt source without a record must be rejected by validation.
+	require.Error(validation.ValidateProxyConfigurerForClient(proxies[0]))
 }

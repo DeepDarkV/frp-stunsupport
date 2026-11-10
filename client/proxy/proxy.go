@@ -79,6 +79,7 @@ func NewProxy(
 		xl:             xlog.FromContextSafe(ctx),
 		ctx:            ctx,
 		udpPacketCodec: udpPacketCodec,
+		localAddr:      newSourceResolver(pxyConf.GetBaseConfig().LocalAddrSource),
 	}
 
 	factory := proxyFactoryRegistry[reflect.TypeOf(pxyConf)]
@@ -99,6 +100,9 @@ type BaseProxy struct {
 	// It's only validate for TCP protocol now.
 	proxyPlugin        plugin.Plugin
 	inWorkConnCallback func(*v1.ProxyBaseConfig, net.Conn, *msg.StartWorkConn) /* continue */ bool
+	// localAddr resolves the backend address per connection when the proxy uses
+	// localAddrSource.
+	localAddr *sourceResolver
 
 	mu             sync.RWMutex
 	xl             *xlog.Logger
@@ -231,13 +235,34 @@ func (pxy *BaseProxy) HandleTCPWorkConnection(workConn net.Conn, m *msg.StartWor
 		defer recycleFn()
 	}
 
+	localAddr := net.JoinHostPort(baseCfg.LocalIP, strconv.Itoa(baseCfg.LocalPort))
+	if pxy.localAddr != nil {
+		// The backend address is published dynamically (for example in a TXT
+		// record) and may have changed since the last connection.
+		resolved, err := pxy.localAddr.resolve(pxy.ctx, baseCfg.LocalIP, baseCfg.LocalPort)
+		if err != nil {
+			workConn.Close()
+			xl.Errorf("resolve local service address error: %v", err)
+			return
+		}
+		host := resolved.host
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		if resolved.port <= 0 {
+			workConn.Close()
+			xl.Errorf("resolved local service address %q has no port", host)
+			return
+		}
+		localAddr = net.JoinHostPort(host, strconv.Itoa(resolved.port))
+	}
 	localConn, err := libnet.Dial(
-		net.JoinHostPort(baseCfg.LocalIP, strconv.Itoa(baseCfg.LocalPort)),
+		localAddr,
 		libnet.WithTimeout(10*time.Second),
 	)
 	if err != nil {
 		workConn.Close()
-		xl.Errorf("connect to local service [%s:%d] error: %v", baseCfg.LocalIP, baseCfg.LocalPort, err)
+		xl.Errorf("connect to local service [%s] error: %v", localAddr, err)
 		return
 	}
 

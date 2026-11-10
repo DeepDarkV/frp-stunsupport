@@ -266,6 +266,19 @@ localIP = "114.114.114.114"
 localPort = 53
 remotePort = 6002
 
+# A TCP proxy can also resolve its backend and its published port from a dynamic source
+# (DNS TXT record, file or command), which is useful when the backend or the published port
+# keeps changing:
+#
+# [[proxies]]
+# name = "open"
+# type = "tcp"
+# remotePort = 7000
+# # Resolved per connection: "host:port" replaces localIP/localPort for the dial target.
+# localAddrSource = { type = "txt", txt = { record = "open.niyilu.top" } }
+# # Resolved on every (re)registration: the port is requested from frps.
+# remotePortSource = { type = "txt", txt = { record = "open.niyilu.top" } }
+#
 # Resolve your domain names to [serverAddr] so you can use http://web01.yourdomain.com to browse web01 and http://web02.yourdomain.com to browse web02
 [[proxies]]
 name = "web01"

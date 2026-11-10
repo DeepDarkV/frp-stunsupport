@@ -62,6 +62,14 @@ type ProxyBackend struct {
 	// LocalPort specifies the port of the backend.
 	LocalPort int `json:"localPort,omitempty"`
 
+	// LocalAddrSource, when set, resolves the backend address as "host:port" and
+	// takes precedence over LocalIP/LocalPort. It is resolved for every incoming
+	// connection, so a backend published dynamically (for example in a DNS TXT
+	// record) is followed without restarting frpc.
+	//
+	// Since v0.73.0
+	LocalAddrSource *ValueSource `json:"localAddrSource,omitempty"`
+
 	// Plugin specifies what plugin should be used for handling connections. If this value
 	// is set, the LocalIP and LocalPort values will be ignored.
 	Plugin TypedClientPluginOptions `json:"plugin,omitempty"`
@@ -265,6 +273,12 @@ type TCPProxyConfig struct {
 	ProxyBaseConfig
 
 	RemotePort int `json:"remotePort,omitempty"`
+	// RemotePortSource, when set, resolves the remote port to request from frps
+	// instead of using RemotePort, for example from a DNS TXT record that holds
+	// the port the service is published on.
+	//
+	// Since v0.73.0
+	RemotePortSource *ValueSource `json:"remotePortSource,omitempty"`
 }
 
 func (c *TCPProxyConfig) MarshalToMsg(m *msg.NewProxy) {
@@ -291,6 +305,11 @@ type UDPProxyConfig struct {
 	ProxyBaseConfig
 
 	RemotePort int `json:"remotePort,omitempty"`
+	// RemotePortSource, when set, resolves the remote port to request from frps
+	// instead of using RemotePort.
+	//
+	// Since v0.73.0
+	RemotePortSource *ValueSource `json:"remotePortSource,omitempty"`
 }
 
 func (c *UDPProxyConfig) MarshalToMsg(m *msg.NewProxy) {

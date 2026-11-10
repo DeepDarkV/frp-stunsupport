@@ -89,6 +89,11 @@ type Wrapper struct {
 	xl  *xlog.Logger
 	ctx context.Context
 
+	// remotePort resolves the port requested from frps when the proxy uses
+	// remotePortSource; baseRemotePort is the statically configured fallback.
+	remotePort     *sourceResolver
+	baseRemotePort int
+
 	wireName string
 }
 
@@ -128,6 +133,10 @@ func NewWrapper(
 			pw.statusNormalCallback, pw.statusFailedCallback)
 		xl.Tracef("enable health check monitor")
 	}
+
+	remotePortSource, baseRemotePort := remotePortSourceOf(cfg)
+	pw.remotePort = newSourceResolver(remotePortSource)
+	pw.baseRemotePort = baseRemotePort
 
 	pw.pxy = NewProxy(pw.ctx, pw.Cfg, clientCfg, encryptionKey, pw.msgTransporter, pw.vnetController, udpPacketCodec)
 	return pw
@@ -214,6 +223,15 @@ func (pw *Wrapper) checkWorker() {
 
 				var newProxyMsg msg.NewProxy
 				pw.Cfg.MarshalToMsg(&newProxyMsg)
+				if pw.remotePort != nil {
+					// Resolve the port right before registering, so a rotated
+					// published port is picked up on every (re)registration.
+					if port, err := pw.remotePort.resolvePort(pw.ctx, pw.baseRemotePort); err != nil {
+						xl.Warnf("resolve remote port error: %v", err)
+					} else {
+						newProxyMsg.RemotePort = port
+					}
+				}
 				newProxyMsg.ProxyName = pw.wireName
 				pw.lastSendStartMsg = now
 				_ = pw.handler(&event.StartProxyPayload{
