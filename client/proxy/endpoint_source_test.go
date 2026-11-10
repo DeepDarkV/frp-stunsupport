@@ -186,6 +186,35 @@ func TestSourceResolverResolvePort(t *testing.T) {
 	require.Equal(t, 7000, port)
 }
 
+func TestSourceResolverInvalidateForcesLookup(t *testing.T) {
+	r := newTestResolver(t)
+	calls := 0
+	r.lookup = func(context.Context) (string, error) {
+		calls++
+		if calls == 1 {
+			return "203.0.113.10:18370", nil
+		}
+		return "198.51.100.7:20777", nil
+	}
+
+	got, err := r.resolve(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.Equal(t, 18370, got.port)
+
+	// Inside the TTL the cached value is reused...
+	got, err = r.resolve(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.Equal(t, 18370, got.port)
+	require.Equal(t, 1, calls)
+
+	// ...until the caller invalidates it after a failed dial.
+	r.invalidate()
+	got, err = r.resolve(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.Equal(t, hostPort{host: "198.51.100.7", port: 20777}, got)
+	require.Equal(t, 2, calls)
+}
+
 func TestNewSourceResolverWithoutSource(t *testing.T) {
 	require.Nil(t, newSourceResolver(nil))
 }

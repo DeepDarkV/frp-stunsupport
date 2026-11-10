@@ -263,6 +263,11 @@ func (pxy *BaseProxy) HandleTCPWorkConnection(workConn net.Conn, m *msg.StartWor
 	if err != nil {
 		workConn.Close()
 		xl.Errorf("connect to local service [%s] error: %v", localAddr, err)
+		if pxy.localAddr != nil {
+			// The backend address is resolved dynamically; a failed dial usually
+			// means it moved, so drop the cache and look it up again next time.
+			pxy.localAddr.invalidate()
+		}
 		return
 	}
 

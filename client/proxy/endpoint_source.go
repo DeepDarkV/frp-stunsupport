@@ -118,6 +118,15 @@ func (r *sourceResolver) resolve(ctx context.Context, fallbackHost string, fallb
 	return resolved, nil
 }
 
+// invalidate drops the cached value, so the next resolution hits the source
+// again. It is called after a failed dial, because a dying backend usually
+// means the published address has moved.
+func (r *sourceResolver) invalidate() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cached = nil
+}
+
 // resolvePort resolves a bare port (used for the remote port requested from
 // frps). The host part of the resolved value is ignored.
 func (r *sourceResolver) resolvePort(ctx context.Context, fallbackPort int) (int, error) {
